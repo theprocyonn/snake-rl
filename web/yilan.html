@@ -1,0 +1,457 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Kendi kendine öğrenen yılan</title>
+<style>
+:root{
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+  --bg:#f3f5f0; --panel:#e8ede5; --ink:#1d2a24; --muted:#5a6b61; --board:#e3e9de; --gridline:#d3dccd;
+  --snake:#2f7d5b; --head:#174f38; --food:#d9482b; --line:#b4c2b6; --accent:#2f7d5b; --accentink:#ffffff;
+  color-scheme:light dark;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#111915; --panel:#1a2520; --ink:#e4ece6; --muted:#9bb0a4; --board:#17221c; --gridline:#202e26;
+    --snake:#4fb88a; --head:#9ae8c3; --food:#ff7a5c; --line:#33473c; --accent:#4fb88a; --accentink:#0d1511;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#111915; --panel:#1a2520; --ink:#e4ece6; --muted:#9bb0a4; --board:#17221c; --gridline:#202e26;
+  --snake:#4fb88a; --head:#9ae8c3; --food:#ff7a5c; --line:#33473c; --accent:#4fb88a; --accentink:#0d1511;
+}
+html{scroll-padding-top:env(safe-area-inset-top,0px);height:100%}
+*,*::before,*::after{box-sizing:inherit}
+body{margin:0;min-height:100%;background:var(--bg);color:var(--ink);
+  font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;line-height:1.5}
+.wrap{max-width:1000px;margin:0 auto;padding:20px 16px 40px}
+h1{font-size:1.6rem;margin:0 0 4px;letter-spacing:-0.01em}
+.lead{margin:0 0 20px;color:var(--muted)}
+.layout{display:grid;gap:20px;grid-template-columns:1fr}
+@media (min-width:800px){.layout{grid-template-columns:minmax(0,480px) minmax(0,1fr);align-items:start}}
+#board{display:block;width:100%;max-width:480px;aspect-ratio:1;border-radius:8px;border:1px solid var(--line);touch-action:none;cursor:pointer}
+.hint{margin:8px 0 0;color:var(--muted);font-size:.9rem;max-width:480px}
+.panel{display:flex;flex-direction:column;gap:14px;min-width:0}
+.modes{display:flex;flex-wrap:wrap;gap:6px}
+button{font:inherit;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:8px 12px;cursor:pointer}
+button:hover{border-color:var(--accent)}
+button:focus-visible,input:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button[aria-pressed="true"]{background:var(--accent);color:var(--accentink);border-color:var(--accent)}
+#speedRow label{display:block;margin-bottom:4px;font-size:.95rem}
+#speedRow input{width:100%;accent-color:var(--accent)}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:0}
+.stat{background:var(--panel);border-radius:6px;padding:8px 10px;min-width:0}
+.stat dt{font-size:.78rem;color:var(--muted)}
+.stat dd{margin:0;font-size:1.35rem;font-weight:600;font-variant-numeric:tabular-nums}
+@media (max-width:420px){.stats{grid-template-columns:repeat(2,1fr)}}
+#ai{display:flex;flex-direction:column;gap:10px}
+#epsLine,.cap,#status{margin:0;font-size:.9rem;color:var(--muted)}
+#chart{width:100%;height:auto;aspect-ratio:600/220;background:var(--panel);border-radius:6px}
+.actions{display:flex;flex-wrap:wrap;gap:6px}
+#status{min-height:1.4em}
+details{font-size:.92rem}
+summary{cursor:pointer;font-weight:600}
+details ul{margin:8px 0 0;padding-left:20px}
+details li{margin-bottom:6px}
+code{font-family:ui-monospace,Consolas,monospace;font-size:.88em}
+[hidden]{display:none !important}
+</style>
+</head>
+<body>
+<main class="wrap">
+  <h1>Kendi kendine öğrenen yılan</h1>
+  <p class="lead">Yılanı kendin oyna ya da yapay zekanın sıfırdan öğrenmesini izle.</p>
+
+  <div class="layout">
+    <section>
+      <canvas id="board" aria-label="Oyun alanı"></canvas>
+      <p id="hint" class="hint"></p>
+    </section>
+
+    <section class="panel">
+      <div class="modes" role="group" aria-label="Mod">
+        <button id="m-human" type="button" aria-pressed="false">Ben oynayayım</button>
+        <button id="m-train" type="button" aria-pressed="true">Yapay zeka öğrensin</button>
+        <button id="m-watch" type="button" aria-pressed="false">Eğitilmiş ajanı izle</button>
+      </div>
+
+      <div id="speedRow">
+        <label for="speed">Hız: <span id="speedLabel"></span></label>
+        <input id="speed" type="range" min="0" max="7" step="1" value="3">
+      </div>
+
+      <dl class="stats">
+        <div class="stat"><dt>Skor</dt><dd id="v1">0</dd></div>
+        <div class="stat"><dt id="l2">En yüksek</dt><dd id="v2">0</dd></div>
+        <div class="stat"><dt id="l3">Bölüm</dt><dd id="v3">0</dd></div>
+        <div class="stat"><dt id="l4">Son 50 ort.</dt><dd id="v4">–</dd></div>
+      </dl>
+
+      <div id="ai">
+        <p id="epsLine"></p>
+        <canvas id="chart" aria-label="Öğrenme eğrisi"></canvas>
+        <p class="cap">Öğrenme eğrisi: son 50 bölümün ortalama skoru. Sol baş taraf rastgele oynamaya yakındır; yükseldikçe ajan öğreniyordur.</p>
+        <div class="actions">
+          <button id="save" type="button">Ajanı kaydet</button>
+          <button id="load" type="button">Kayıtlı ajanı yükle</button>
+          <button id="reset" type="button">Öğrenmeyi sıfırla</button>
+        </div>
+        <p id="status" role="status"></p>
+      </div>
+
+      <details>
+        <summary>Yapay zeka nasıl öğreniyor?</summary>
+        <ul>
+          <li><strong>Gördüğü şey:</strong> Ajan tüm haritayı görmez, 9 bitlik bir özet görür: önünde, sağında ve solunda duvar ya da gövde var mı (3 bit), hangi yöne gidiyor (2 bit), yem solda, sağda, yukarıda, aşağıda mı (4 bit). Bu da 512 olası durum eder.</li>
+          <li><strong>Seçtiği şey:</strong> Her durumda 3 hamleden biri: düz, sağa, sola.</li>
+          <li><strong>Bellek (Q tablosu):</strong> Her (durum, hamle) çifti için "bu hamle uzun vadede ne kadar ödül getirir" tahmini tutulur. Başta hepsi sıfırdır.</li>
+          <li><strong>Ödül:</strong> Yem yemek +10, ölmek −10, yeme yaklaşmak +1, uzaklaşmak −1,2. Takılıp dönmesin diye, yem yemeden çok uzun süre geçerse bölüm ölümle biter.</li>
+          <li><strong>Güncelleme:</strong> Her adımdan sonra <code>Q ← Q + 0,1 × (ödül + 0,9 × sonraki en iyi Q − Q)</code>.</li>
+          <li><strong>Keşif (ε):</strong> Başta hamlelerin çoğu rastgeledir, bölüm ilerledikçe ε azalır ve ajan öğrendiğini uygular.</li>
+          <li><strong>Sınır:</strong> Ajan gövdesinin tamamını görmediği için yılan uzayınca kendini sıkıştırabilir. Skor bir noktada tavan yapar; bunu aşmak için daha zengin durum bilgisi ya da derin Q ağı (DQN) gerekir.</li>
+        </ul>
+      </details>
+    </section>
+  </div>
+</main>
+
+<script>
+// ==CORE START==
+const N = 15, NS = 512, NA = 3;
+const ALPHA = 0.1, GAMMA = 0.9, EPS_MIN = 0.01, EPS_DECAY = 0.995;
+const DIRS = [[0,-1],[1,0],[0,1],[-1,0]]; // yukarı, sağ, aşağı, sol
+
+class Game {
+  constructor(){ this.reset(); }
+  reset(){
+    const m = Math.floor(N/2);
+    this.snake = [{x:m,y:m},{x:m-1,y:m},{x:m-2,y:m}]; // ilk eleman baş
+    this.dir = 1; this.score = 0; this.sinceFood = 0; this.over = false;
+    this.occ = new Uint8Array(N*N);
+    for (const s of this.snake) this.occ[s.y*N+s.x] = 1;
+    this.placeFood();
+  }
+  placeFood(){
+    const empty = [];
+    for (let i = 0; i < N*N; i++) if (!this.occ[i]) empty.push(i);
+    if (!empty.length){ this.food = null; return false; }
+    const i = empty[Math.floor(Math.random()*empty.length)];
+    this.food = {x:i % N, y:(i / N) | 0};
+    return true;
+  }
+  blocked(x,y){ return x<0 || y<0 || x>=N || y>=N || this.occ[y*N+x]===1; }
+  danger(dir){ const d = DIRS[dir], h = this.snake[0]; return this.blocked(h.x+d[0], h.y+d[1]); }
+  state(){
+    const h = this.snake[0], f = this.food || h, dir = this.dir;
+    return (this.danger(dir) ? 1 : 0) |
+           (this.danger((dir+1)%4) ? 2 : 0) |
+           (this.danger((dir+3)%4) ? 4 : 0) |
+           (dir << 3) |
+           (f.x < h.x ? 32 : 0) | (f.x > h.x ? 64 : 0) |
+           (f.y < h.y ? 128 : 0) | (f.y > h.y ? 256 : 0);
+  }
+  // rel: 0 düz, 1 sağa, 2 sola
+  step(rel){ return this.stepAbs((this.dir + (rel===0 ? 0 : rel===1 ? 1 : 3)) % 4); }
+  stepAbs(dir){
+    if (dir === (this.dir+2)%4) dir = this.dir; // 180 derece dönüş yok
+    this.dir = dir;
+    const h = this.snake[0], d = DIRS[dir], nx = h.x+d[0], ny = h.y+d[1];
+    const before = this.food ? Math.abs(this.food.x-h.x)+Math.abs(this.food.y-h.y) : 0;
+    this.sinceFood++;
+    if (this.blocked(nx,ny)){ this.over = true; return {reward:-10, done:true, ate:false}; }
+    this.snake.unshift({x:nx,y:ny}); this.occ[ny*N+nx] = 1;
+    if (this.food && nx===this.food.x && ny===this.food.y){
+      this.score++; this.sinceFood = 0;
+      if (!this.placeFood()){ this.over = true; return {reward:10, done:true, ate:true}; }
+      return {reward:10, done:false, ate:true};
+    }
+    const t = this.snake.pop(); this.occ[t.y*N+t.x] = 0;
+    if (this.sinceFood > 100 + 8*this.snake.length){ this.over = true; return {reward:-10, done:true, ate:false}; }
+    const after = this.food ? Math.abs(this.food.x-nx)+Math.abs(this.food.y-ny) : 0;
+    return {reward: after < before ? 1 : -1.2, done:false, ate:false};
+  }
+}
+
+const agent = {Q:new Float32Array(NS*NA), eps:1, episodes:0, best:0, recent:[], history:[]};
+function maxQ(s){ const q = agent.Q, b = s*NA; return Math.max(q[b], q[b+1], q[b+2]); }
+function greedy(s){
+  const q = agent.Q, b = s*NA;
+  const m = Math.max(q[b], q[b+1], q[b+2]);
+  const n = (q[b]===m) + (q[b+1]===m) + (q[b+2]===m);
+  let k = Math.floor(Math.random()*n);
+  for (let i = 0; i < NA; i++) if (q[b+i]===m){ if (k===0) return i; k--; }
+  return 0;
+}
+function learn(s,a,r,s2,done){
+  const q = agent.Q, i = s*NA+a;
+  const target = r + (done ? 0 : GAMMA*maxQ(s2));
+  q[i] += ALPHA*(target - q[i]);
+}
+// ==CORE END==
+
+// ---------- Arayüz ----------
+const CELL = 40, SIZE = N*CELL;
+const SPEEDS = [1,2,5,10,50,200,1000,Infinity];
+const SPEED_LABELS = ["1 adım/kare","2 adım/kare","5 adım/kare","10 adım/kare","50 adım/kare","200 adım/kare","1000 adım/kare","Turbo (hızlı eğitim)"];
+const $ = id => document.getElementById(id);
+const cv = $('board'), cx = cv.getContext('2d'); cv.width = cv.height = SIZE;
+const ch = $('chart'), chx = ch.getContext('2d'); ch.width = 600; ch.height = 220;
+
+const C = {};
+function readColors(){
+  const s = getComputedStyle(document.documentElement);
+  for (const k of ['ink','muted','board','gridline','snake','head','food','line','accent','panel']) C[k] = s.getPropertyValue('--'+k).trim();
+}
+readColors();
+if (window.matchMedia) window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', readColors);
+
+const game = new Game();
+let mode = 'train';            // human | train | watch
+let humanState = 'ready';      // ready | playing | over
+let queue = [], lastTick = 0, pause = 0, speedIdx = 3;
+const TICK = 110;
+const recs = {human:{best:0,games:0,recent:[]}, watch:{best:0,games:0,recent:[]}};
+
+function getRec(){
+  if (mode === 'train') return {best:agent.best, games:agent.episodes, recent:agent.recent};
+  return recs[mode];
+}
+function pushRecent(arr, v){ arr.push(v); if (arr.length > 50) arr.shift(); }
+const avg = a => a.length ? a.reduce((x,y)=>x+y,0)/a.length : 0;
+
+function endEpisode(){
+  const sc = game.score;
+  if (mode === 'train'){
+    agent.episodes++;
+    agent.eps = Math.max(EPS_MIN, agent.eps*EPS_DECAY);
+    pushRecent(agent.recent, sc);
+    if (sc > agent.best) agent.best = sc;
+    if (agent.episodes % 10 === 0) agent.history.push(avg(agent.recent));
+  } else {
+    const r = recs[mode]; r.games++; pushRecent(r.recent, sc); if (sc > r.best) r.best = sc;
+  }
+  pause = SPEEDS[speedIdx] <= 10 ? 25 : 0;
+}
+
+function aiStep(){
+  if (game.over) game.reset();
+  const s = game.state();
+  const a = (mode === 'train' && Math.random() < agent.eps) ? Math.floor(Math.random()*NA) : greedy(s);
+  const r = game.step(a);
+  if (mode === 'train') learn(s, a, r.reward, game.state(), r.done);
+  if (r.done) endEpisode();
+}
+function aiLoop(){
+  if (game.over && pause > 0){ pause--; return; }
+  const sp = SPEEDS[speedIdx], t0 = performance.now();
+  if (sp === Infinity){
+    let i = 0;
+    while (true){
+      aiStep();
+      if ((++i & 63) === 0 && performance.now() - t0 > 25) break;
+    }
+  } else {
+    for (let i = 0; i < sp; i++){ aiStep(); if (game.over && pause > 0) break; }
+  }
+}
+
+function humanLoop(ts){
+  if (humanState !== 'playing') return;
+  if (ts - lastTick >= TICK){
+    lastTick = ts;
+    const d = queue.length ? queue.shift() : game.dir;
+    const r = game.stepAbs(d);
+    if (r.done){
+      humanState = 'over';
+      const h = recs.human; h.games++; pushRecent(h.recent, game.score); if (game.score > h.best) h.best = game.score;
+    }
+  }
+}
+function handleDir(d){
+  if (mode !== 'human' || humanState === 'over') return;
+  if (humanState === 'ready'){ humanState = 'playing'; lastTick = performance.now(); queue = []; }
+  const last = queue.length ? queue[queue.length-1] : game.dir;
+  if (d === last || d === (last+2)%4) return;
+  if (queue.length < 2) queue.push(d);
+}
+function restartHuman(){ game.reset(); humanState = 'ready'; queue = []; }
+
+const KEYMAP = {ArrowUp:0,ArrowRight:1,ArrowDown:2,ArrowLeft:3,w:0,d:1,s:2,a:3,W:0,D:1,S:2,A:3};
+window.addEventListener('keydown', e => {
+  if (mode !== 'human') return;
+  if (e.key in KEYMAP){ e.preventDefault(); handleDir(KEYMAP[e.key]); }
+  else if ((e.key === ' ' || e.key === 'Enter') && humanState === 'over'){
+    const t = document.activeElement && document.activeElement.tagName;
+    if (t === 'BUTTON' || t === 'INPUT') return;
+    e.preventDefault(); restartHuman();
+  }
+});
+let px = 0, py = 0;
+cv.addEventListener('pointerdown', e => { px = e.clientX; py = e.clientY; });
+cv.addEventListener('pointerup', e => {
+  if (mode !== 'human') return;
+  const dx = e.clientX - px, dy = e.clientY - py;
+  if (Math.abs(dx) < 20 && Math.abs(dy) < 20){ if (humanState === 'over') restartHuman(); return; }
+  handleDir(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 1 : 3) : (dy > 0 ? 2 : 0));
+});
+
+// ---------- Çizim ----------
+function rr(x,y,w,h,r){
+  cx.beginPath();
+  if (cx.roundRect) cx.roundRect(x,y,w,h,r); else cx.rect(x,y,w,h);
+  cx.fill();
+}
+function banner(l1, l2){
+  cx.globalAlpha = 0.7; cx.fillStyle = C.board; cx.fillRect(0,0,SIZE,SIZE); cx.globalAlpha = 1;
+  cx.textAlign = 'center'; cx.fillStyle = C.ink; cx.font = '600 34px system-ui,sans-serif';
+  cx.fillText(l1, SIZE/2, SIZE/2 - 6);
+  cx.fillStyle = C.muted; cx.font = '22px system-ui,sans-serif';
+  cx.fillText(l2, SIZE/2, SIZE/2 + 30);
+}
+function draw(){
+  cx.fillStyle = C.board; cx.fillRect(0,0,SIZE,SIZE);
+  cx.strokeStyle = C.gridline; cx.lineWidth = 1; cx.beginPath();
+  for (let i = 1; i < N; i++){
+    cx.moveTo(i*CELL+.5,0); cx.lineTo(i*CELL+.5,SIZE);
+    cx.moveTo(0,i*CELL+.5); cx.lineTo(SIZE,i*CELL+.5);
+  }
+  cx.stroke();
+  if (game.food){
+    cx.fillStyle = C.food; cx.beginPath();
+    cx.arc((game.food.x+.5)*CELL, (game.food.y+.5)*CELL, CELL*.32, 0, Math.PI*2); cx.fill();
+  }
+  for (let i = game.snake.length-1; i >= 0; i--){
+    const s = game.snake[i];
+    cx.fillStyle = i === 0 ? C.head : C.snake;
+    rr(s.x*CELL+3, s.y*CELL+3, CELL-6, CELL-6, 9);
+  }
+  if (mode === 'human'){
+    if (humanState === 'ready') banner('Hazır', 'Başlamak için ok tuşlarına bas');
+    else if (humanState === 'over') banner('Oyun bitti', 'Boşluk tuşu ya da dokun: yeniden başla');
+  } else if (game.over){
+    cx.globalAlpha = 0.5; cx.fillStyle = C.board; cx.fillRect(0,0,SIZE,SIZE); cx.globalAlpha = 1;
+  }
+}
+function drawChart(){
+  const W = ch.width, H = ch.height, L = 40, B = 24, T = 14, R = 10;
+  chx.clearRect(0,0,W,H);
+  const h = agent.history;
+  const ymax = Math.max(5, Math.ceil(Math.max(0, ...h)/5)*5);
+  chx.strokeStyle = C.line; chx.fillStyle = C.muted; chx.lineWidth = 1; chx.font = '16px system-ui,sans-serif';
+  chx.textAlign = 'right';
+  for (let k = 0; k <= 4; k++){
+    const y = T + (H-T-B)*(1-k/4);
+    chx.beginPath(); chx.moveTo(L,y); chx.lineTo(W-R,y); chx.stroke();
+    chx.fillText(String(Math.round(ymax*k/4)), L-6, y+5);
+  }
+  chx.textAlign = 'left';
+  chx.fillText('bölüm 0', L, H-6);
+  chx.textAlign = 'right';
+  chx.fillText('bölüm ' + (h.length*10), W-R, H-6);
+  if (h.length < 2){
+    chx.textAlign = 'center'; chx.fillText('Eğitim başlayınca eğri burada oluşur', W/2, H/2); return;
+  }
+  chx.strokeStyle = C.accent; chx.lineWidth = 3; chx.beginPath();
+  const stride = Math.max(1, Math.floor(h.length/300));
+  let first = true;
+  for (let i = 0; i < h.length; i += stride){
+    const x = L + (W-L-R)*(i/(h.length-1));
+    const y = T + (H-T-B)*(1 - h[i]/ymax);
+    if (first){ chx.moveTo(x,y); first = false; } else chx.lineTo(x,y);
+  }
+  chx.stroke();
+}
+
+// ---------- İstatistikler ----------
+let lastStat = 0;
+function updateStats(force){
+  const now = performance.now();
+  if (!force && now - lastStat < 120) return;
+  lastStat = now;
+  const r = getRec();
+  $('v1').textContent = game.score;
+  $('v2').textContent = Math.max(r.best, game.score);
+  $('v3').textContent = r.games;
+  $('v4').textContent = r.recent.length ? avg(r.recent).toFixed(1) : '–';
+  if (mode !== 'human'){
+    let known = 0;
+    for (let s = 0; s < NS; s++){ const b = s*NA; if (agent.Q[b] || agent.Q[b+1] || agent.Q[b+2]) known++; }
+    const e = mode === 'train' ? 'ε = ' + agent.eps.toFixed(2) + ' (hamlelerin yaklaşık %' + Math.round(agent.eps*100) + '’i rastgele)' : 'ε = 0 (ajan sadece öğrendiğini uygular)';
+    $('epsLine').textContent = e + ' · Öğrenilen durum: ' + known + ' / ' + NS;
+    drawChart();
+  }
+}
+
+// ---------- Modlar ve kontroller ----------
+const HINTS = {
+  human: 'Ok tuşları ya da W A S D ile yönlendir. Telefonda ekranda kaydır.',
+  train: 'Ajan her bölümden öğreniyor. Hızı artırıp eğri yükselene kadar bekle.',
+  watch: 'Öğrenme kapalı: ajan o ana kadar öğrendiğini uygular.'
+};
+const LABELS = {
+  human: ['En yüksek','Oynanan oyun','Ortalama'],
+  train: ['En yüksek','Bölüm','Son 50 ort.'],
+  watch: ['En yüksek','İzlenen oyun','Son 50 ort.']
+};
+function setMode(m){
+  mode = m; game.reset(); humanState = 'ready'; queue = []; pause = 0;
+  for (const k of ['human','train','watch']) $('m-'+k).setAttribute('aria-pressed', String(k === m));
+  $('speedRow').hidden = m === 'human';
+  $('ai').hidden = m === 'human';
+  $('hint').textContent = HINTS[m];
+  $('l2').textContent = LABELS[m][0]; $('l3').textContent = LABELS[m][1]; $('l4').textContent = LABELS[m][2];
+  if (m === 'watch' && agent.episodes === 0) setStatus('Ajan henüz eğitilmedi, önce “Yapay zeka öğrensin” modunda eğit.');
+  else setStatus('');
+  updateStats(true);
+}
+function setStatus(t){ $('status').textContent = t; }
+for (const k of ['human','train','watch']){
+  $('m-'+k).addEventListener('click', e => { setMode(k); e.currentTarget.blur(); });
+}
+$('speed').addEventListener('input', e => {
+  speedIdx = +e.target.value; $('speedLabel').textContent = SPEED_LABELS[speedIdx];
+});
+$('speedLabel').textContent = SPEED_LABELS[speedIdx];
+
+const KEY = 'yilan-q-v1';
+$('save').addEventListener('click', e => {
+  try {
+    localStorage.setItem(KEY, JSON.stringify({Q:Array.from(agent.Q), eps:agent.eps, episodes:agent.episodes, best:agent.best, recent:agent.recent, history:agent.history}));
+    setStatus('Ajan bu tarayıcıya kaydedildi (' + agent.episodes + ' bölüm).');
+  } catch (err){ setStatus('Kaydedilemedi: tarayıcı depolamaya izin vermiyor.'); }
+  e.currentTarget.blur();
+});
+$('load').addEventListener('click', e => {
+  try {
+    const raw = localStorage.getItem(KEY);
+    if (!raw){ setStatus('Kayıtlı ajan bulunamadı.'); }
+    else {
+      const d = JSON.parse(raw);
+      agent.Q.set(d.Q); agent.eps = d.eps; agent.episodes = d.episodes; agent.best = d.best;
+      agent.recent = d.recent; agent.history = d.history;
+      game.reset();
+      setStatus('Ajan yüklendi (' + agent.episodes + ' bölüm).');
+      updateStats(true);
+    }
+  } catch (err){ setStatus('Kayıt okunamadı.'); }
+  e.currentTarget.blur();
+});
+$('reset').addEventListener('click', e => {
+  agent.Q.fill(0); agent.eps = 1; agent.episodes = 0; agent.best = 0; agent.recent = []; agent.history = [];
+  game.reset(); setStatus('Öğrenme sıfırlandı, ajan baştan başlıyor.'); updateStats(true);
+  e.currentTarget.blur();
+});
+
+function frame(ts){
+  if (mode === 'human') humanLoop(ts); else aiLoop();
+  draw(); updateStats(false);
+  requestAnimationFrame(frame);
+}
+setMode('train');
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
