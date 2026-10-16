@@ -82,9 +82,9 @@ python play.py                          # 1: insan modu, 2: yapay zeka modu
 ```
 
 **Bölüm 2**
-E�itim için Colab önerilir: `bolum2_sifirdan/colab_egitim.ipynb` dosyasını Colab'e yükleyin,
+Eğitim için Colab önerilir: `bolum2_sifirdan/colab_egitim.ipynb` dosyasını Colab'e yükleyin,
 çalışma zamanı türünü T4 GPU yapın ve hücreleri sırayla çalıştırın.
-E�itilmiş modeli yerelde izlemek ve ölçmek için:
+Eğitilmiş modeli yerelde izlemek ve ölçmek için:
 ```
 cd bolum2_sifirdan
 python evaluate.py model_en_iyi.pt --oyun 200
